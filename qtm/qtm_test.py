@@ -30,6 +30,7 @@ async def setup():
 
         await connection.trig()
         await connection.await_event(qtm.QRTEvent.EventCaptureStarted)
+        print("holaa")
 
         await asyncio.sleep(2)
 

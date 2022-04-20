@@ -21,6 +21,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy import stats
 from datetime import datetime
+import logging
+logging.basicConfig(level=logging.INFO)
+LOG = logging.getLogger("example")
 
 warnings.filterwarnings("once")
 
@@ -29,7 +32,7 @@ from threading import Thread
 if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-SERIAL_PORT = "COM7"
+SERIAL_PORT = "COM6"
 MSG_LENGTH = 40
 BAUDRATE = 230400
 
@@ -127,22 +130,19 @@ class Connection:
         if self.connected:
             self.conn.close()
         if self.qtm_connection is not None:
-            self.loop.run_until_complete(self.qtm_control.__aexit__(None, None, None))
+            self.loop.run_until_complete(self.qtm_connection.release_control())
 
         self.loop.close()
 
     def connect(self):
         if self.connected:
             return
-        try:
-            self.conn.open()
-            self.connected = self.conn.is_interface_open
-            if self.connected:
-                print(f"Connected to IMU")
-            else:
-                print(f"Failed to connect to IMU")
-        except Exception as e:
-            print(f"[ERROR]: {e}")
+        self.conn.open()
+        self.connected = self.conn.is_interface_open
+        if self.connected:
+            print(f"Connected to IMU")
+        else:
+            print(f"Failed to connect to IMU")
         self.last_update = time.time()
 
         # QTM
@@ -150,8 +150,7 @@ class Connection:
         if self.qtm_connection is None:
             raise Exception("Could not connect to QTM")
         # Take control
-        self.qtm_control = qtm.TakeControl(self.qtm_connection, "password")
-        self.loop.run_until_complete(self.qtm_control.__aenter__())
+        self.loop.run_until_complete(self.qtm_connection.take_control("password"))
         # Create new capture file
         self.loop.run_until_complete(self.qtm_connection.new())
         self.loop.run_until_complete(
@@ -160,6 +159,10 @@ class Connection:
 
     def read_message(self):
         msg = self.conn.read(MSG_LENGTH)
+        if len(msg) < MSG_LENGTH:
+            print("Message timeout")
+            self.conn.flush()
+            return
         # First, check if the data has started or not.
         # Check if all bytes are equal to .
         data_all = list(struct.unpack("fffffffff", msg[:36]))
@@ -226,20 +229,21 @@ class Connection:
         await self.qtm_connection.start()
         await self.qtm_connection.await_event(qtm.QRTEvent.EventWaitingForTrigger)
         await self.qtm_connection.trig()
-        await self.qtm_connection.await_event(qtm.QRTEvent.EventCaptureStarted)
+        # await self.qtm_connection.await_event(qtm.QRTEvent.EventCaptureStarted)
 
     async def stop_qtm(self):
         await self.qtm_connection.stop()
         await self.qtm_connection.await_event(qtm.QRTEvent.EventCaptureStopped)
         now = datetime.now()
         await self.qtm_connection.save(
-            f"./test/measurement_{now.strftime('%Y_%m_%d__%H_%M_%S')}.qtm"
+            f"./test/measurement_{now.strftime('%Y_%m_%d__%H_%M_%S')}"
         )
 
     def run(self):
         self.connect()
         # Start QTM recording
         self.loop.run_until_complete(self.start_qtm())
+        self.start_arduino()
         try:
             while True:
                 self.read_message()
@@ -249,7 +253,7 @@ class Connection:
             self.save_data()
         finally:
             print("Disconnecting...")
-            self.loop.run_until_complete(self.stop_qtm()
+            self.loop.run_until_complete(self.stop_qtm())
             print(stats.describe(self.updates))
             self.cleanup()
 
