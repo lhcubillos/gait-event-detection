@@ -35,6 +35,7 @@ if platform.system() == "Windows":
 SERIAL_PORT = "COM6"
 MSG_LENGTH = 40
 BAUDRATE = 230400
+FULL_TURNAROUND_TIME = 32.020 #milliseconds
 
 
 class LivePlotter:
@@ -201,9 +202,10 @@ class Connection:
             ]
             dict_writer = csv.DictWriter(f, keys)
             dict_writer.writeheader()
+            # Timestamp is delayed by half of the turnaround time
             modified_dict = [
                 {
-                    "timestamp": dic["timestamp"],
+                    "timestamp": dic["timestamp"] + FULL_TURNAROUND_TIME/2,
                     "euler_x": dic["euler"][0],
                     "euler_y": dic["euler"][1],
                     "euler_z": dic["euler"][2],
@@ -236,13 +238,15 @@ class Connection:
         await self.qtm_connection.await_event(qtm.QRTEvent.EventCaptureStopped)
         now = datetime.now()
         await self.qtm_connection.save(
-            f"./test/measurement_{now.strftime('%Y_%m_%d__%H_%M_%S')}"
+            f"LC042022\measurement_{now.strftime('%Y_%m_%d__%H_%M_%S')}.qtm"
         )
 
     def run(self):
         self.connect()
         # Start QTM recording
         self.loop.run_until_complete(self.start_qtm())
+        # Send the start signal to Arduino, and start receiving values
+        # QTM and Arduino will be delayed by half of the full turnaround time.
         self.start_arduino()
         try:
             while True:
