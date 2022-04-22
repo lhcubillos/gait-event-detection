@@ -112,6 +112,8 @@ class Connection:
         self.updates = []
         self.data = []
 
+        self.ts_recording = datetime.now()
+
         # QTM
         self.qtm_connection = None
 
@@ -132,6 +134,7 @@ class Connection:
             self.conn.close()
         if self.qtm_connection is not None:
             self.loop.run_until_complete(self.qtm_connection.release_control())
+            self.qtm_connection.disconnect()
 
         self.loop.close()
 
@@ -184,9 +187,8 @@ class Connection:
         # Will save as csv
         if len(self.data) == 0:
             return
-        now = datetime.now()
         with open(
-            f"results/{now.strftime('%Y_%m_%d__%H_%M_%S')}.csv", "w", newline=""
+            f"results/{self.ts_recording.strftime('%Y_%m_%d__%H_%M_%S')}.csv", "w", newline=""
         ) as f:
             keys = [
                 "timestamp",
@@ -236,9 +238,8 @@ class Connection:
     async def stop_qtm(self):
         await self.qtm_connection.stop()
         await self.qtm_connection.await_event(qtm.QRTEvent.EventCaptureStopped)
-        now = datetime.now()
         await self.qtm_connection.save(
-            f"LC042022\measurement_{now.strftime('%Y_%m_%d__%H_%M_%S')}.qtm"
+            f"LC042022\measurement_{self.ts_recording.strftime('%Y_%m_%d__%H_%M_%S')}.qtm"
         )
 
     def run(self):
