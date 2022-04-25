@@ -75,6 +75,7 @@ void sendSensorData()
     byteArray[1] = (int)((ts >> 16) & 0xFF);
     byteArray[2] = (int)((ts >> 8) & 0XFF);
     byteArray[3] = (int)((ts & 0XFF));
+    // TODO: add start and stop values to add extra layer of confirmation
 
     byte values[40];
     memcpy(values, (byte *)eulers, 12);

@@ -22,6 +22,7 @@ from matplotlib import pyplot as plt
 from scipy import stats
 from datetime import datetime
 import logging
+
 logging.basicConfig(level=logging.INFO)
 LOG = logging.getLogger("example")
 
@@ -32,10 +33,10 @@ from threading import Thread
 if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-SERIAL_PORT = "COM6"
+SERIAL_PORT = "COM7"
 MSG_LENGTH = 40
 BAUDRATE = 230400
-FULL_TURNAROUND_TIME = 32.020 #milliseconds
+FULL_TURNAROUND_TIME = 32.020  # milliseconds
 
 
 class LivePlotter:
@@ -101,7 +102,7 @@ class LivePlotter:
 
 
 class Connection:
-    def __init__(self) -> None:
+    def __init__(self, do_qtm=False) -> None:
         self.conn = XBeeSerialPort(BAUDRATE, SERIAL_PORT, timeout=0.1)
         self.connected = False
         self.connected_device = False
@@ -115,6 +116,7 @@ class Connection:
         self.ts_recording = datetime.now()
 
         # QTM
+        self.do_qtm = do_qtm
         self.qtm_connection = None
 
         self.p_thread = Thread(target=self.plotter_thread, daemon=True)
@@ -150,16 +152,17 @@ class Connection:
         self.last_update = time.time()
 
         # QTM
-        self.qtm_connection = self.loop.run_until_complete(qtm.connect("127.0.0.1"))
-        if self.qtm_connection is None:
-            raise Exception("Could not connect to QTM")
-        # Take control
-        self.loop.run_until_complete(self.qtm_connection.take_control("password"))
-        # Create new capture file
-        self.loop.run_until_complete(self.qtm_connection.new())
-        self.loop.run_until_complete(
-            self.qtm_connection.await_event(qtm.QRTEvent.EventConnected)
-        )
+        if self.do_qtm:
+            self.qtm_connection = self.loop.run_until_complete(qtm.connect("127.0.0.1"))
+            if self.qtm_connection is None:
+                raise Exception("Could not connect to QTM")
+            # Take control
+            self.loop.run_until_complete(self.qtm_connection.take_control("password"))
+            # Create new capture file
+            self.loop.run_until_complete(self.qtm_connection.new())
+            self.loop.run_until_complete(
+                self.qtm_connection.await_event(qtm.QRTEvent.EventConnected)
+            )
 
     def read_message(self):
         msg = self.conn.read(MSG_LENGTH)
@@ -188,7 +191,9 @@ class Connection:
         if len(self.data) == 0:
             return
         with open(
-            f"results/{self.ts_recording.strftime('%Y_%m_%d__%H_%M_%S')}.csv", "w", newline=""
+            f"results/{self.ts_recording.strftime('%Y_%m_%d__%H_%M_%S')}.csv",
+            "w",
+            newline="",
         ) as f:
             keys = [
                 "timestamp",
@@ -207,7 +212,7 @@ class Connection:
             # Timestamp is delayed by half of the turnaround time
             modified_dict = [
                 {
-                    "timestamp": dic["timestamp"] + FULL_TURNAROUND_TIME/2,
+                    "timestamp": dic["timestamp"] + FULL_TURNAROUND_TIME / 2,
                     "euler_x": dic["euler"][0],
                     "euler_y": dic["euler"][1],
                     "euler_z": dic["euler"][2],
@@ -245,7 +250,8 @@ class Connection:
     def run(self):
         self.connect()
         # Start QTM recording
-        self.loop.run_until_complete(self.start_qtm())
+        if self.do_qtm:
+            self.loop.run_until_complete(self.start_qtm())
         # Send the start signal to Arduino, and start receiving values
         # QTM and Arduino will be delayed by half of the full turnaround time.
         self.start_arduino()
@@ -258,11 +264,12 @@ class Connection:
             self.save_data()
         finally:
             print("Disconnecting...")
-            self.loop.run_until_complete(self.stop_qtm())
+            if self.do_qtm:
+                self.loop.run_until_complete(self.stop_qtm())
             print(stats.describe(self.updates))
             self.cleanup()
 
 
 if __name__ == "__main__":
-    connection = Connection()
+    connection = Connection(False)
     connection.run()
