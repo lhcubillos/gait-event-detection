@@ -1,10 +1,3 @@
-"""
-Detection callback w/ scanner
---------------
-Example showing what is returned using the callback upon detection functionality
-Updated on 2020-10-11 by bernstern <bernie@allthenticate.net>
-"""
-
 import asyncio
 import csv
 import qtm

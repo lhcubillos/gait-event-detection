@@ -1,17 +1,18 @@
-function [heel_strike_idxs, t_window] = detect_gait_events_hu(t, imu_accel, imu_gyro, sample_rate)
+function [heel_strike_idxs, predictions, t_window] = detect_gait_events_hu(t_window, X)
     %DETECT_GAIT_EVENTS Summary of this function goes here
     %   Detailed explanation goes here
     SWING = 1;
     STANCE = 2;
+    UNKNOWN = 3;
 
-    [X, t_window] = generate_features_hu(t, imu_accel, imu_gyro, sample_rate);
     %% Classifier
-    load models / trainedLogReg3subjects.mat trainedModel
+    %     load("models/trainedLogReg3subjects.mat", "trainedModel");
+    load("models/tree_trained_sc_few_lc.mat", "trainedModel");
 
     num_moving_avg = 3;
     min_time_betw_hs = 0.3;
     % Simulate actual data streaming in
-    predictions = [];
+    predictions = zeros(length(X), 1);
     heel_strike_idxs = [];
     heel_strike_t = [];
 
@@ -24,17 +25,17 @@ function [heel_strike_idxs, t_window] = detect_gait_events_hu(t, imu_accel, imu_
         % If I don't have enough predictions, I won't be able to find heel
         % strike.
         % If I have enough predictions to do a moving average
-        if length(predictions) >= num_moving_avg
-            pred = mean([predictions(end - (num_moving_avg - 2):end); pred]);
-        end
+        % if i >= num_moving_avg
+        %     pred = mean([predictions(i - (num_moving_avg - 2):i); pred]);
+        % end
 
-        predictions = [predictions; pred];
+        predictions(i) = pred;
 
-        if length(predictions) < 2
+        if i < 2
             continue;
         end
 
-        last_pred = round(predictions(end - 1));
+        last_pred = round(predictions(i - 1));
         pred = round(pred);
 
         if last_pred == SWING && pred == STANCE
